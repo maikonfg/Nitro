@@ -1,0 +1,71 @@
+name: Gerar APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      anuncios_reais:
+        description: "Marcado = anúncios REAIS do AdMob. Desmarcado = anúncios de teste"
+        type: boolean
+        default: false
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # O GitHub não abre .zip sozinho: aqui a gente abre o Nitro.zip que está no repositório
+      - name: Abrir o zip do projeto
+        run: |
+          mkdir projeto
+          find . -maxdepth 2 -iname '*.zip' -not -path './projeto/*' -print0 | xargs -0 -r -I{} unzip -q -o "{}" -d projeto
+          ACHADO=$(find projeto -name settings.gradle | head -n 1)
+          if [ -z "$ACHADO" ]; then
+            echo "::error::Não achei o settings.gradle. Tem o zip do Nitro na raiz do repositório?"
+            exit 1
+          fi
+          echo "DIR=$(dirname "$ACHADO")" >> "$GITHUB_ENV"
+
+      - name: Anúncios de teste ou reais
+        run: |
+          if [ "${{ inputs.anuncios_reais }}" = "true" ]; then
+            sed -i 's/def adsTeste = true/def adsTeste = false/' "$DIR/app/build.gradle"
+          fi
+          grep -n "def adsTeste =" "$DIR/app/build.gradle"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Aceitar licenças do SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Compilar
+        run: |
+          cd "$DIR"
+          gradle assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/Nitro.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nitro-APK
+          path: Nitro.apk
+
+      - name: Publicar o APK em Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "v${{ github.run_number }}" Nitro.apk \
+            --title "Nitro v${{ github.run_number }}" \
+            --notes "APK gerado pelo GitHub Actions. Anúncios reais: ${{ inputs.anuncios_reais || 'false' }}"
