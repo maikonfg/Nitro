@@ -31,6 +31,11 @@ jobs:
           fi
           echo "DIR=$(dirname "$ACHADO")" >> "$GITHUB_ENV"
 
+      - name: Trocar pelos IDs do AdMob
+        run: |
+          sed -i 's#ca-app-pub-2717532853084022~8319506897#ca-app-pub-2717532853084022~2018656570#; s#ca-app-pub-2717532853084022/5693343550#ca-app-pub-2717532853084022/9478344192#' "$DIR/app/build.gradle"
+          grep -n "ca-app-pub-2717532853084022" "$DIR/app/build.gradle"
+
       - name: Anúncios de teste ou reais
         run: |
           if [ "${{ inputs.anuncios_reais }}" = "true" ]; then
